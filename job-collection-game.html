@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Application Collection Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: url('career-services-career-fair-864x540.jpg') center/cover;
+            border: 3px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            z-index: 1;
+        }
+
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .timer {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .basket {
+            position: absolute;
+            width: 125px;
+            height: 125px;
+            background: url('c8929824ff290d2bffb2210c1f036515-removebg-preview.png') center/contain no-repeat;
+            z-index: 5;
+            transition: all 0.1s ease;
+        }
+
+        .job-application {
+            position: absolute;
+            width: 40px;
+            height: 30px;
+            background: url('Employment-Job-Application.png') center/contain no-repeat;
+            z-index: 3;
+            animation: sparkle 2s infinite alternate;
+        }
+
+        @keyframes sparkle {
+            0% { filter: brightness(1) drop-shadow(0 0 3px rgba(255,215,0,0.5)); }
+            100% { filter: brightness(1.3) drop-shadow(0 0 8px #ffd700); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .basket:hover {
+            animation: float 1s ease-in-out infinite;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #ffd700;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 20;
+            display: none;
+        }
+
+        .restart-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.3s;
+        }
+
+        .restart-btn:hover {
+            background: #45a049;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-overlay"></div>
+        
+        <div class="hud">
+            <div class="score">Score: <span id="score">0</span></div>
+            <div class="timer">Time: <span id="timer">60</span>s</div>
+        </div>
+
+        <div class="instructions">
+            Use Arrow Keys to Move • Collect Job Applications!
+        </div>
+
+        <div class="basket" id="basket"></div>
+
+        <div class="game-over" id="gameOver">
+            <h2>Game Over!</h2>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <button class="restart-btn" onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        // Game variables
+        let score = 0;
+        let timeLeft = 60;
+        let gameRunning = false;
+        let gameInterval;
+        let timerInterval;
+        let spawnInterval;
+        
+        // Game objects
+        const basket = document.getElementById('basket');
+        const gameContainer = document.querySelector('.game-container');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const gameOverScreen = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+
+        // Basket position
+        let basketX = 370; // Center of container (800px width - 60px basket width) / 2
+        let basketY = 500; // Near bottom
+
+        // Arrays for game objects
+        let jobApplications = [];
+        let particles = [];
+
+        // Input handling
+        const keys = {};
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (!gameRunning && e.code === 'Space') {
+                startGame();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Game initialization
+        function initGame() {
+            basketX = 370;
+            basketY = 500;
+            updateBasketPosition();
+            
+            // Clear any existing objects
+            jobApplications.forEach(app => app.element.remove());
+            particles.forEach(particle => particle.element.remove());
+            jobApplications = [];
+            particles = [];
+            
+            score = 0;
+            timeLeft = 60;
+            updateUI();
+            
+            gameOverScreen.style.display = 'none';
+        }
+
+        function startGame() {
+            if (gameRunning) return;
+            
+            gameRunning = true;
+            initGame();
+            
+            // Game loop
+            gameInterval = setInterval(gameLoop, 1000/60); // 60 FPS
+            
+            // Timer
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateUI();
+                increaseDifficulty();
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            // Spawn job applications
+            spawnInterval = setInterval(spawnJobApplication, 800);
+        }
+
+        function gameLoop() {
+            handleInput();
+            updateJobApplications();
+            updateParticles();
+            checkCollisions();
+        }
+
+        function handleInput() {
+            const speed = 5;
+            
+            if (keys['ArrowLeft'] && basketX > 0) {
+                basketX -= speed;
+            }
+            if (keys['ArrowRight'] && basketX < 740) { // 800 - 60
+                basketX += speed;
+            }
+            if (keys['ArrowUp'] && basketY > 0) {
+                basketY -= speed;
+            }
+            if (keys['ArrowDown'] && basketY < 540) { // 600 - 60
+                basketY += speed;
+            }
+            
+            updateBasketPosition();
+        }
+
+        function updateBasketPosition() {
+            basket.style.left = basketX + 'px';
+            basket.style.top = basketY + 'px';
+        }
+
+        function spawnJobApplication() {
+            const jobApp = document.createElement('div');
+            jobApp.className = 'job-application';
+            
+            const x = Math.random() * 760; // 800 - 40
+            const size = 0.8 + Math.random() * 0.4; // Random size between 0.8 and 1.2
+            
+            jobApp.style.left = x + 'px';
+            jobApp.style.top = '-40px';
+            jobApp.style.transform = `scale(${size})`;
+            
+            gameContainer.appendChild(jobApp);
+            
+            jobApplications.push({
+                element: jobApp,
+                x: x,
+                y: -40,
+                speed: 2 + Math.random() * 2, // Random fall speed
+                size: size
+            });
+        }
+
+        function updateJobApplications() {
+            for (let i = jobApplications.length - 1; i >= 0; i--) {
+                const jobApp = jobApplications[i];
+                jobApp.y += jobApp.speed;
+                jobApp.element.style.top = jobApp.y + 'px';
+                
+                // Remove if off screen
+                if (jobApp.y > 600) {
+                    jobApp.element.remove();
+                    jobApplications.splice(i, 1);
+                }
+            }
+        }
+
+        function checkCollisions() {
+            for (let i = jobApplications.length - 1; i >= 0; i--) {
+                const jobApp = jobApplications[i];
+                
+                if (basketX < jobApp.x + 40 &&
+                    basketX + 60 > jobApp.x &&
+                    basketY < jobApp.y + 30 &&
+                    basketY + 60 > jobApp.y) {
+                    
+                    // Collision detected!
+                    collectJobApplication(jobApp, i);
+                }
+            }
+        }
+
+        function collectJobApplication(jobApp, index) {
+            // Play collection sound (placeholder for now)
+            playCollectSound();
+            
+            // Add to score
+            const points = Math.floor(jobApp.size * 10);
+            score += points;
+            updateUI();
+            
+            // Create particle effect
+            createParticles(jobApp.x + 20, jobApp.y + 15);
+            
+            // Remove job application
+            jobApp.element.remove();
+            jobApplications.splice(index, 1);
+        }
+
+        function createParticles(x, y) {
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                
+                const angle = (Math.PI * 2 * i) / 8;
+                const speed = 3 + Math.random() * 3;
+                
+                particle.style.left = x + 'px';
+                particle.style.top = y + 'px';
+                
+                gameContainer.appendChild(particle);
+                
+                particles.push({
+                    element: particle,
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 30
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const particle = particles[i];
+                
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.2; // Gravity
+                particle.life--;
+                
+                particle.element.style.left = particle.x + 'px';
+                particle.element.style.top = particle.y + 'px';
+                particle.element.style.opacity = particle.life / 30;
+                
+                if (particle.life <= 0) {
+                    particle.element.remove();
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function playCollectSound() {
+            // Play sound from audio file
+            try {
+                const audio = new Audio('ford-chime.wav'); // Replace with your sound file name
+                audio.volume = 1.0; // Adjust volume (0.0 to 1.0)
+                audio.play().catch(e => {
+                    console.log('Audio play failed:', e);
+                    // Visual feedback fallback if audio fails
+                    document.body.style.backgroundColor = '#ffffcc';
+                    setTimeout(() => {
+                        document.body.style.backgroundColor = '';
+                    }, 100);
+                });
+            } catch (error) {
+                console.log('Audio file not found or failed:', error);
+                // Visual feedback fallback
+                document.body.style.backgroundColor = '#ffffcc';
+                setTimeout(() => {
+                    document.body.style.backgroundColor = '';
+                }, 100);
+            }
+        }
+
+        function updateUI() {
+            scoreElement.textContent = score;
+            timerElement.textContent = timeLeft;
+        }
+
+        function endGame() {
+            gameRunning = false;
+            
+            clearInterval(gameInterval);
+            clearInterval(timerInterval);
+            clearInterval(spawnInterval);
+            
+            finalScoreElement.textContent = score;
+            gameOverScreen.style.display = 'block';
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        // Initialize the game
+        initGame();
+        
+        // Add difficulty progression
+        let difficultyLevel = 1;
+        
+        function increaseDifficulty() {
+            if (gameRunning && timeLeft % 15 === 0 && timeLeft !== 60) {
+                difficultyLevel++;
+                clearInterval(spawnInterval);
+                const newSpawnRate = Math.max(300, 800 - (difficultyLevel * 100));
+                spawnInterval = setInterval(spawnJobApplication, newSpawnRate);
+            }
+        }
+        
+
+        
+        // Add background music simulation
+        function playBackgroundMusic() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.02, audioContext.currentTime);
+            
+            oscillator.start();
+            
+            setTimeout(() => {
+                oscillator.stop();
+            }, 1000);
+        }
+        
+        // Show start message
+        setTimeout(() => {
+            if (!gameRunning) {
+                const startMsg = "🎯 Job Collection Game! 🎯\n\n" +
+                               "📋 Collect falling job applications at the career fair!\n" +
+                               "🎮 Use ARROW KEYS to move your basket\n" +
+                               "⏱️ You have 60 seconds\n" +
+                               "📈 Larger applications = more points\n" +
+                               "🚀 Game gets faster every 15 seconds!\n\n" +
+                               "Press SPACE to start!";
+                alert(startMsg);
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
